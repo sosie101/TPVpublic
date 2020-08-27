@@ -186,6 +186,7 @@ class DataMethods:
         curves that aren't continuous.
         Then, statistically deletes outliers from __dfAdjusted
         """
+        # DataMethods.__dfAdjusted.loc[0, "PCE"] = 20
         originalLen = len(DataMethods.__dfAdjusted)
         for row in DataMethods.__dfAdjusted.itertuples():
             Voc = DataMethods.__dfAdjusted.at[row.Index, 'Voc']
@@ -194,10 +195,12 @@ class DataMethods:
                 negVocMessage = "Deleted file named " + DataMethods.__dfAdjusted.at[row.Index, "File"] + " because the Voc is negative"
                 CleanDataModule.cleanLogFill(self, negVocMessage)
                 DataMethods.__dfAdjusted.drop(row.Index, inplace=True)
+                # delete from datatree
             elif FF < 25 or FF > 100:
                 oddFFMessage = "Deleted file named " + DataMethods.__dfAdjusted.at[row.Index, "File"] + " because the FF is either too low or too high"
                 CleanDataModule.cleanLogFill(self, oddFFMessage)
                 DataMethods.__dfAdjusted.drop(row.Index, inplace=True)
+                # delete from datatree
         startRow = 0
         endRow = DataMethods.findEndRow(self)
         startColumn = 1 #the Current column
@@ -211,6 +214,7 @@ class DataMethods:
                 JVOutlierMessage = "Deleted file named " + subset.at[startRow, 'File'] + " because it's JV curve isn't continuous"
                 CleanDataModule.cleanLogFill(self, JVOutlierMessage)
                 DataMethods.__dfAdjusted.drop(indices, inplace=True)
+                #delete from dataTree
             startRow += increment+1
             endRow += increment+1
         JscList = DataMethods.__dfAdjusted.loc[:, "Jsc"]
@@ -540,7 +544,7 @@ class CleanDataModule:
                                                            CleanDataModule.populateDataTree(self)])
         self.mergeFrameButton.grid(column=0,row=1)
 
-        self.cleanOutliersButton = tk.Button(manipDataFileFrame, text = "Clean Outliers", command = lambda: DataMethods.removeOutliers(self))
+        self.cleanOutliersButton = tk.Button(manipDataFileFrame, text = "Clean Outliers", command = lambda: [DataMethods.removeOutliers(self), CleanDataModule.cleanDataTree(self), CleanDataModule.populateDataTree(self)])
         self.cleanOutliersButton.grid(column=0, row=2)
         
         self.startOver = ttk.Button(manipDataFileFrame, text='Start Over',
