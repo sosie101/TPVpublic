@@ -51,10 +51,12 @@ import tkinter.ttk as ttk
 import pandas as pd
 import numpy as np
 from jvFileLoader_12Aug20 import LoadData as ld
+from scipy.signal import argrelextrema
 import matplotlib as plt
+plt.use("TkAgg")
+from matplotlib.figure import Figure
 import seaborn as sns
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import SortAndPlotFunctions_12Aug20 as spf
 from PIL import ImageTk,Image 
 
@@ -76,6 +78,7 @@ class DataMethods:
     __dfParameters = pd.DataFrame() #loaded from parameters CSV. keep around to restore if needed
     __dfHyst = pd.DataFrame() #not fully implemented yet in a way I like - a dataframe that includes hysteresis data from JV curves (difference in performance based on scan direction)
     __numpyDf = pd.DataFrame()
+    allJVData = pd.DataFrame()
     badFileList = ''
     # noisyCurveList = []
     def __init__(self, master):
@@ -95,7 +98,11 @@ class DataMethods:
         self.dfTemp = loader.df
         self.badFileTemp = loader.badFormatLoadList
         self.noisyCurveTemp = loader.noisyCurveLoadList
+        DataMethods.allJVData = loader.allDataJVdf             # for identifying outliers
         DataMethods.badFileSetter(self,self.badFileTemp)
+        #creates dict that will have more data added and be converted to a dataframe
+        # self.dictForRemoveOutliers = {'filenames': self.filenameList}
+        # make a dataframe with the file names, voc, fsc, and fill factor so it can be evaluated later when deciding to remove outliers
         # DataMethods.noisyCurveList = self.noisyCurveTemp
         DataMethods.__dfLoaded = pd.concat([DataMethods.__dfLoaded, self.dfTemp])
     def loadDataCSV(self, addDevices = False):
@@ -144,7 +151,6 @@ class DataMethods:
                 df2 = df2.droplevel(0,axis=1)
             #remove a level of df2 and remove duplicate columns from df2
                 cols_not_to_use = [i for i in list(df2.columns.values) if i in list(df1.columns.values) and i not in mergeOn]
-                print(cols_not_to_use)
                 df2 = df2.drop(columns = cols_not_to_use)
                 dfTemp = pd.merge(df1, df2, on=mergeOn, how='left')
                                     # validate = 'm:1')
@@ -154,9 +160,13 @@ class DataMethods:
             dfTemp = DataMethods.__dfLoaded.copy()
         DataMethods.__dfAdjusted = dfTemp
         DataMethods.__dfAdjusted.reset_index(inplace=True)
+        #print("__dfAdjusted after merging dataframes")
+        #print(DataMethods.__dfAdjusted)
     def cleanJscFunct(self, jscLim=4):
-        #this is supposed to delete device data if those devices got less than a threshold Jsc
-        #threshold Jsc is either 4 (default) or set by user
+        """
+        this is supposed to delete device data if those devices got less than a threshold Jsc
+        threshold Jsc is either 4 (default) or set by user
+        """
         try:
             jscLimit = float(jscLim)
         except:
@@ -169,28 +179,83 @@ class DataMethods:
         tempLength = str(len(indexJscLim))
         insertText=f'removed {tempLength} IV curves because Jsc was below {jscLim}'
         CleanDataModule.cleanLogFill(self,insertText) #tell user how many rows were removed from dataset
-    def cleanOutliers(self,param, rmGrp, zScore):
-        #FIX THIS to remove ridiculously high outliers. This was written by previous coder, RCB has not implemented it
-        # this removed the lower outliers based on Z score. (lower is important since removing the best performing cells isn't useful UNLESS IT IS - FIX THIS!)
-        df = DataMethods.dataFrameAdjusted_get(self)
-        zScoreFl = float(zScore)  
-        if rmGrp:
-            #### groups the data by rmGrp then removes outliers. This can be used to remove the worst data points from each cell, or other group, independant of the data in the other groups
-            df = df[df.groupby(rmGrp)[param].\
-              transform(lambda x: (x.mean() - x) / x.std() < zScoreFl).eq(1)]
-            dfRm = df[df.groupby(rmGrp)[param].\
-              transform(lambda x: (x.mean() - x) / x.std() > zScoreFl).eq(1)]
-        if not rmGrp:
-            ##if no group is specified all the data is lumped togther, and lowest points across all treatments, fwd or rev, cells, etc are removed
-            df = df[df[param].\
-                    transform(lambda x: (x.mean() - x) / x.std() < zScoreFl).eq(1)]
-            dfRm = df[df[param].\
-                    transform(lambda x: (x.mean() - x) / x.std() > zScoreFl).eq(1)]
-        tempLength = len(dfRm.index) 
-        tempLength = str(tempLength)
-        DataMethods.__dfAdjusted = df
-        insertText=f'removed {tempLength} IV curves based on Zscore of{zScore}'
-        CleanDataModule.cleanLogFill(insertText)
+    def removeOutliers(self):
+        """
+        loops through DataMethods.__dfAdjusted to make sure the FF and Voc values aren't impossible
+        then, sees if the data in allJVData has >1 local maxima. It would if the curve isn't continuous. Deletes
+        curves that aren't continuous.
+        Then, statistically deletes outliers from __dfAdjusted
+        """
+        originalLen = len(DataMethods.__dfAdjusted)
+        for row in DataMethods.__dfAdjusted.itertuples():
+            Voc = DataMethods.__dfAdjusted.at[row.Index, 'Voc']
+            FF = DataMethods.__dfAdjusted.at[row.Index, 'FF']
+            if Voc < 0:
+                negVocMessage = "Deleted file named " + DataMethods.__dfAdjusted.at[row.Index, "File"] + " because the Voc is negative"
+                CleanDataModule.cleanLogFill(self, negVocMessage)
+                DataMethods.__dfAdjusted.drop(row.Index, inplace=True)
+            elif FF < 25 or FF > 100:
+                oddFFMessage = "Deleted file named " + DataMethods.__dfAdjusted.at[row.Index, "File"] + " because the FF is either too low or too high"
+                CleanDataModule.cleanLogFill(self, oddFFMessage)
+                DataMethods.__dfAdjusted.drop(row.Index, inplace=True)
+        startRow = 0
+        endRow = DataMethods.findEndRow(self)
+        startColumn = 1 #the Current column
+        endColumn = 2 #the File column
+        increment = endRow-startRow
+        for i in range(len(DataMethods.__dfAdjusted)):
+            subset = DataMethods.allJVData.iloc[startRow:endRow+1, startColumn:endColumn+1]
+            maximums = argrelextrema(subset['Current'].values, np.greater, order= 10)  # the order is the number of points being compared to determine
+            if (len(maximums[0]) > 1):                                                 # if something is a max. There are 150 points to be compared total. This can be changed
+                indices = list(range(startRow, endRow+1))
+                JVOutlierMessage = "Deleted file named " + subset.at[startRow, 'File'] + " because it's JV curve isn't continuous"
+                CleanDataModule.cleanLogFill(self, JVOutlierMessage)
+                DataMethods.__dfAdjusted.drop(indices, inplace=True)
+            startRow += increment+1
+            endRow += increment+1
+        JscList = DataMethods.__dfAdjusted.loc[:, "Jsc"]
+        JscList = JscList.values.tolist()
+        DataMethods.detectOutliers(self, JscList, "Jsc")
+        VocList = DataMethods.__dfAdjusted.loc[:, "Voc"]
+        VocList = VocList.values.tolist()
+        DataMethods.detectOutliers(self, VocList, "Voc")
+        FFList = DataMethods.__dfAdjusted.loc[:, "FF"]
+        FFList = FFList.values.tolist()
+        DataMethods.detectOutliers(self, FFList, "FF")
+        PCEList = DataMethods.__dfAdjusted.loc[:, "PCE"]
+        PCEList = PCEList.values.tolist()
+        DataMethods.detectOutliers(self, PCEList, "PCE")
+        if len(DataMethods.__dfAdjusted) == originalLen:
+            printToActivityLog = "No files contain outliers"
+            CleanDataModule.cleanLogFill(self, printToActivityLog)
+    def findEndRow(self):
+        '''
+        Finds the last row of voltage data in the allJVData dataframe for one file. Returns the int.
+        '''
+        startFileName = DataMethods.allJVData.at[0, 'File'][0]
+        curFileName = ""
+        indexNum = 0
+        for index, row in DataMethods.allJVData.iterrows():
+            curFileName = row['File']
+            if curFileName != startFileName:
+                return indexNum-1
+            indexNum += 1
+    def detectOutliers(self, dataPointList, value):
+        """
+        uses a Z score to identify files with a Jsc, FF, PCE, or Voc outside of the acceptable range for the dataset.
+        dataPointList has a list of values and value is a string that's the name of the measurement (ex: "Jsc" or "Voc")
+        Deletes files with values that have a Z score greater than the threshold (that can be changed).
+        """
+        threshold = 2                    # how many standard deviations away from the mean acceptable data points are
+        dataMean = np.mean(dataPointList)
+        dataStdDev = np.std(dataPointList)
+        for i in range(len(dataPointList)):
+            dataPoint = dataPointList[i]
+            dataPointZScore = (dataPoint-dataMean) / dataStdDev
+            if np.abs(dataPointZScore) > threshold:
+                valueOutlierMessage = "Deleted file named " + DataMethods.__dfAdjusted.at[i, 'File'] + " because it's " + value + " value is an outlier"
+                CleanDataModule.cleanLogFill(self, valueOutlierMessage)
+                DataMethods.__dfAdjusted.drop(i, inplace=True)
     def badFileSetter(self, badFileTempList):
         self.badFileTemp = badFileTempList
         if not self.badFileTemp:
@@ -221,7 +286,6 @@ class DataMethods:
             dfAdjustRemove = dfAdjustRemove[dfAdjustRemove[arg[0]]==arg[1]]
         indexNames = dfAdjustRemove.index
         DataMethods.__dfAdjusted.drop(indexNames, inplace=True)
-        print("Data deleted")
     def dataFrameAdjusted_columns(self):
         columnsList = DataMethods.__dfAdjusted.columns.values.tolist()
         return columnsList
@@ -458,15 +522,26 @@ class CleanDataModule:
                                   + f'(mA/cm\N{SUPERSCRIPT TWO})')
 
         #buttons:
+        self.selectionError = tk.Label(viewDataFrame, text= "")
+        self.previewJVplotButton = tk.Button(viewDataFrame, text="Preview Selected Device's JV curve", command= lambda : self.previewJVplot())
+        self.previewJVplotButton.pack()
         self.deleteDevicesButton = tk.Button(viewDataFrame, text = 'Delete Selected Devices',
                                              command = lambda: CleanDataModule.destroyTreeItems(self))
         self.deleteDevicesButton.pack()
+        self.jvPlot= Figure(figsize=(2,2))
+        self.ax = self.jvPlot.add_subplot()
+        self.jvCanvas = FigureCanvasTkAgg(self.jvPlot, viewDataFrame)
 
+        self.CleanDataTabLabel = tk.Label(manipDataFileFrame, text= "Click Merge Parameters to upload the devices, even if there's no parameters CSV.")
+        self.CleanDataTabLabel.grid(column=0, row=0)
         self.mergeFrameButton = tk.Button(manipDataFileFrame, text='Merge Parameters with JV Data',
                                           command= lambda:[DataMethods.dataFrameMerger(self),
                                                            CleanDataModule.cleanLogFill(self,('DataFrames Merged')),
                                                            CleanDataModule.populateDataTree(self)])
-        self.mergeFrameButton.grid(column=0,row=0)
+        self.mergeFrameButton.grid(column=0,row=1)
+
+        self.cleanOutliersButton = tk.Button(manipDataFileFrame, text = "Clean Outliers", command = lambda: DataMethods.removeOutliers(self))
+        self.cleanOutliersButton.grid(column=0, row=2)
         
         self.startOver = ttk.Button(manipDataFileFrame, text='Start Over',
                                     command = lambda: [DataMethods.dataFrameAdjusted_destroy(self),
@@ -474,7 +549,7 @@ class CleanDataModule:
                                                        CleanDataModule.cleanDataTree(self),
                                                        CleanDataModule.populateDataTree(self),
                                                        CleanDataModule.cleanLogFill(self,'Data restored to original')])
-        self.startOver.grid(column=0,row=1)
+        self.startOver.grid(column=0,row=3)
         
         self.cleanJscButton = ttk.Button(cleanDataFrame, text='Remove Jsc Below Limit^',
                                          command = lambda: [DataMethods.cleanJscFunct(self,jscLowerLimEntry.get()),
@@ -483,9 +558,53 @@ class CleanDataModule:
         self.cleanJscButton.grid(column=0,row=3, columnspan=3)
      
     def previewJVplot(self):
-        #write here
-        print('JV plot preview')
-        
+        """
+        Makes a JV plot of the selected scan. Prints an error if there's more than one scan selected.
+        Identifies the selected file and its JV data from the tree. Calls makeJVPreviewPlot to make the plot in viewDataFrame
+        """
+        self.selectionError.pack_forget()       # deletes the error if it was previously displayed
+        self.selectedItems = self.viewDataTree.selection()
+        if len(self.selectedItems) != 1:
+            self.selectionError.configure(text= "Please select one item")
+            self.selectionError.pack()
+            return
+        columnvalues = self.viewDataTree['columns']  # get file info from selected item
+        self.attributeList = []
+        deviceValues = self.viewDataTree.item(self.selectedItems, 'values')
+        for k, value in enumerate(deviceValues,start=0):
+            self.attributeList.append((columnvalues[k], value))
+        self.allJVData = DataMethods.allJVData   # get JV data from attribute list
+        filenames = self.allJVData.groupby(by="File")
+        for filename in filenames:
+            if self.isSelectedFile(deviceValues, filename[0]):
+                filesJVData = filename[1]
+                break
+        self.makeJVPreviewPlot(filesJVData)
+
+    def makeJVPreviewPlot(self, filesJVData):
+        """
+        Makes a JV plot from the dataframe that has the Voltage, Current, and filename (filesJVData).
+        """
+        self.jvCanvas.get_tk_widget().pack_forget()
+        self.ax.cla()                               # clears prexisting subplots
+        voltage = filesJVData["Voltage"]
+        current = filesJVData["Current"]
+        filename = filesJVData["File"].iloc[0]
+        self.ax.plot(voltage, current)
+        self.ax.set_title(filename)
+        self.ax.set_xlabel("Voltage")
+        self.ax.set_ylabel("Current")
+        self.jvPlot.tight_layout()
+        self.jvCanvas.draw()
+        self.jvCanvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    def isSelectedFile(self, deviceValues, filename):
+        """
+        Checks if the filename passed in contains all the device values. Looks at the first 5 values in deviceValues. The
+        rest of the values are numerical data.
+        """
+        return (deviceValues[0] in filename) and (deviceValues[1] in filename) and (deviceValues[2] in filename)  and (deviceValues[3] in filename) and (deviceValues[4] in filename)
+
     def populateDataTree(self):
         self.__treeData = DataMethods.dataFrameAdjusted_get(self)
         sampleGroup = self.__treeData.groupby(by=['User Initials','Sample'], as_index=False)
@@ -512,15 +631,14 @@ class CleanDataModule:
         self.viewDataTree.delete(*self.viewDataTree.get_children())
         
     def destroyTreeItems(self):
+        self.jvCanvas.get_tk_widget().pack_forget()  # removes prexisting JV plot
+        self.ax.cla()
         self.selectedItems = self.viewDataTree.selection()
-        print(self.selectedItems)
         self.attributeList = []
         columnvalues = self.viewDataTree['columns']
         counter = 0
-        # print(columnvalues)
         for i in self.selectedItems:
             children = self.viewDataTree.get_children(i)
-            print(children)
             if len(children) > 0:
                 for j in children:
                     self.attributeList = []
@@ -551,8 +669,6 @@ class CleanDataModule:
         self.cleanLoadLog.configure(state='normal')
         self.cleanLoadLog.insert('end+2l', f'{insertText}\n')
         self.cleanLoadLog.configure(state='disabled')
-        
-        
 
 class PlotDataModule:
     # A window where you can:
@@ -711,7 +827,7 @@ class PlotDataModule:
         self.preview.pack(expand=True, side = tk.LEFT, fill=tk.BOTH)
         self.preview.configure(state = 'disabled')
         
-    def previewPlot(self, master, plotType):  
+    def previewPlot(self, master, plotType):
         self.plotType = plotType
         self.master = master
         yGroup = self.yVar.get()

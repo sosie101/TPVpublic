@@ -155,7 +155,6 @@ class Plots:
             #### need to move the legends
             if self.x2DotGroup:
                 if self.x2DotGroup != self.x2Group: #### this adds more information to the plot, as you can now label 3 groups (or have 3 independent variables) in the plot
-                
                     ax1 = sns.swarmplot(x=self.x1Group, y=self.yGroup,hue = self.x2DotGroup,palette="bright", data=self.df,
                     size=6, color=".5", linewidth=2,dodge=True)
                     ax1.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
@@ -173,7 +172,7 @@ class Plots:
             # print('resizing axis')
         # self.fig.tight_layout(pad=0.5)
         plt.savefig(self.folderSave + self.strSave)
-        plt.close()
+        # plt.close()
         plotImage = PIL.Image.open(self.folderSave+self.strSave)
         return plotImage
     def stripPlot(self):
@@ -221,7 +220,7 @@ class Plots:
             ax1.set_title(titleSave)
         # self.figure.tight_layout(pad = 0.5)
         plt.savefig(self.folderSave + self.strSave)
-        plt.close()
+        # plt.close()
         plotImage = PIL.Image.open(self.folderSave+self.strSave)
         return plotImage
     
