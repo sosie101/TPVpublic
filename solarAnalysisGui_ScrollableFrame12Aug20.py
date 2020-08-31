@@ -44,11 +44,9 @@ Structure of GUI:
     
 @author: rbramant
 """
-
 import tkinter as tk
 from tkinter import filedialog
 import tkinter.ttk as ttk
-from tkinter import tix
 import pandas as pd
 import numpy as np
 from jvFileLoader_12Aug20 import LoadData as ld
@@ -56,8 +54,7 @@ from scipy.signal import argrelextrema
 import matplotlib as plt
 plt.use("TkAgg")
 from matplotlib.figure import Figure
-import seaborn as sns
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import SortAndPlotFunctions_12Aug20 as spf
 from PIL import ImageTk,Image 
 
@@ -352,10 +349,10 @@ class LoadDataModule:
         self.loadCSV_button.grid(row=0,column=2, rowspan=2, columnspan=2)
 
         logScrollY = tk.Scrollbar(logFrame)
-        logScrollY.pack(side=tk.RIGHT, fill=tk.Y)
+       # logScrollY.pack(side=tk.RIGHT, fill=tk.Y)
         
         logScrollX = tk.Scrollbar(logFrame, orient=tk.HORIZONTAL)
-        logScrollX.pack(side=tk.BOTTOM, fill=tk.X)
+       # logScrollX.pack(side=tk.BOTTOM, fill=tk.X)
 
         self.loadLog = tk.Text(loadLogFrame, width=100, height=6,
                            yscrollcommand=logScrollY, xscrollcommand = logScrollX,
@@ -585,20 +582,21 @@ class CleanDataModule:
                                                             CleanDataModule.populateDataTree(self)])
         self.cleanJscButton.grid(column=0,row=3, columnspan=3)
 
-        # jv scan:
-        self.jvPlot= Figure(figsize=(4,3))
+        # jv scan preview:
+        self.jvPlot= Figure(figsize=(6,4))
         self.ax = self.jvPlot.add_subplot()
-
         xScrollbar = tk.Scrollbar(viewJVScanFrame, orient=tk.HORIZONTAL)
         xScrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        yScrollbar = tk.Scrollbar(viewJVScanFrame, orient=tk.VERTICAL)
-        yScrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+       # yScrollbar = tk.Scrollbar(viewJVScanFrame, orient=tk.VERTICAL)
+       # yScrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.jvFigureCanvas = FigureCanvasTkAgg(self.jvPlot, viewJVScanFrame)
         xScrollbar.config(command=self.jvFigureCanvas.get_tk_widget().xview)
-        yScrollbar.config(command=self.jvFigureCanvas.get_tk_widget().yview)
-        self.jvFigureCanvas.get_tk_widget().config(xscrollcommand=xScrollbar.set, yscrollcommand=yScrollbar.set, scrollregion=(0,0,500,500))
-        # self.jvFigureCanvas.get_tk_widget().config(scrollregion=self.jvFigureCanvas.get_tk_widget().bbox(tk.constants.ALL))
+       # yScrollbar.config(command=self.jvFigureCanvas.get_tk_widget().yview)
+        self.jvFigureCanvas.get_tk_widget().config(xscrollcommand=xScrollbar.set, scrollregion=(0,0,500,500))
+        toolbar = NavigationToolbar2Tk(self.jvFigureCanvas, viewJVScanFrame)
+        toolbar.update()
+        self.legendLabel = []
      
     def previewJVplot(self):
         """
@@ -630,15 +628,16 @@ class CleanDataModule:
         """
         voltage = filesJVData["Voltage"]
         current = filesJVData["Current"]
-        filename = filesJVData["File"].iloc[0]
         self.ax.plot(voltage, current)
-        self.ax.legend(filename)
+        jvFilename = filesJVData["File"].iloc[0][:-4]
+        self.legendLabel.append(jvFilename)
+        self.ax.legend((self.legendLabel), loc="upper left", bbox_to_anchor=(1.05, 1.), borderaxespad=0., fontsize= "xx-small")
         self.ax.set_title("JV curve")
         self.ax.set_xlabel("Voltage")
         self.ax.set_ylabel("Current")
         self.jvPlot.tight_layout()
         self.jvFigureCanvas.draw()
-        self.jvFigureCanvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.jvFigureCanvas.get_tk_widget().pack()
 
     def isSelectedFile(self, deviceValues, filename):
         """
@@ -837,7 +836,7 @@ class PlotDataModule:
         self.yVarPairList.configure(state=tk.DISABLED)
         
         #Buttons and Radio Buttons:
-        self.updateButton = tk.Button(self.editPlotSetupFrame, text='Reset X', width=10,
+        self.updateButton = tk.Button(self.editPlotSetupFrame, text='Update X', width=10,
                                       command=lambda: [self.updateVariables()])
         self.updateButton.grid(column=5, row=0, padx=0)
         self.boxPlotButton = tk.Button(self.plotPreviewSetupFrame, text='Box Plot Preview',
@@ -860,7 +859,7 @@ class PlotDataModule:
         xScrollPreview.pack(side=tk.BOTTOM, expand=True, fill=tk.X)
         yScrollPreview = tk.Scrollbar(self.plotPreviewFrame, orient=tk.VERTICAL)
         yScrollPreview.pack(side=tk.RIGHT, expand=True, fill=tk.Y)
-        self.preview = tk.Canvas(self.plotPreviewFrame, 
+        self.preview = tk.Canvas(self.plotPreviewFrame,
                                  width = 900, height=400,
                                  scrollregion=(0,0,1000,1500),
                                  xscrollcommand = xScrollPreview.set,
@@ -886,26 +885,26 @@ class PlotDataModule:
             print('Entries for y axis range and figure size must be numeric')
         self.df = DataMethods.dataFrameAdjusted_get(self)
         if self.scanDirection.get() == 'fwd':
-            self.df = self.df.loc[self.df['Scan Direction']=='fwd']
+            self.df = self.df.loc[self.df['Scan Direction'] == 'fwd']
         elif self.scanDirection.get() == 'rev':
-            self.df = self.df.loc[self.df['Scan Direction']=='rev']
+            self.df = self.df.loc[self.df['Scan Direction'] == 'rev']
         newPlot = spf.Plots(self.master, x1Group=x1Group, x2Group=x2Group,
-                         x2DotGroup=x2DotGroup, sizeX=sizeX, sizeY=sizeY,
-                         yAxRangeMin=yAxRangeMin, yAxRangeMax=yAxRangeMax, fntSz=fntSize,
-                         df=self.df, yGroup=yGroup)
-        if plotType=='box':
-            plotImage=newPlot.barPlot()
+                            x2DotGroup=x2DotGroup, sizeX=sizeX, sizeY=sizeY,
+                            yAxRangeMin=yAxRangeMin, yAxRangeMax=yAxRangeMax, fntSz=fntSize,
+                            df=self.df, yGroup=yGroup)
+        if plotType == 'box':
+            plotImage = newPlot.barPlot()
         elif plotType == 'strip':
             plotImage = newPlot.stripPlot()
         elif plotType == 'pair':
             plotImage = newPlot.pairPlot()
             print('Pair Plot Generated')
         photo = ImageTk.PhotoImage(plotImage, master=self.master)
-        self.preview.configure(state = 'normal')
+        self.preview.configure(state='normal')
         self.preview.delete('all')
-        self.preview.create_image(0,0,anchor = tk.NW, image=photo)
+        self.preview.create_image(0, 0, anchor=tk.NW, image=photo)
         self.preview.image = photo
-        self.preview.configure(state = 'disabled')
+        self.preview.configure(state='disabled')
         print('plot updated')
         
     def updateVariables(self):
@@ -940,38 +939,65 @@ class PlotDataModule:
             menuDot.add_command(label=string,
                               command=tk._setit(self.xVarDot, string))
 
+class YScrolledFrame(tk.Frame):
+    """
+    Creates a frame that has a vertical scrollbar on the side. Used in the Notebook class modification.
+    """
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        self.canvas = canvas = tk.Canvas(self, width=1000, height=500, relief='raised')
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scroll = tk.Scrollbar(self, command=canvas.yview, orient=tk.VERTICAL)
+        canvas.config(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+
+        self.content = tk.Frame(canvas)
+        self.canvas.create_window(0, 0, window=self.content, anchor="nw")
+        self.content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+class Notebook(ttk.Notebook):
+    """
+    Adds to the tkinter Notebook widget by using scrollable frames for each tab
+    """
+    def __init__(self, parent, tab_labels):
+        super().__init__(parent)
+
+        self._tab = {}
+        for text in tab_labels:
+            self._tab[text] = YScrolledFrame(self)
+            # layout by .add defaults to fill=tk.BOTH, expand=True
+            self.add(self._tab[text], text=text, compound=tk.TOP)
+
+    def tab(self, key):
+        return self._tab[key].content
 
 class NotebookWindow:
      def __init__(self, master):
         self.master = master
-         
-        mainNb = ttk.Notebook(master, padding = 10, width = 1000)
-        # add scrollbar
+        mainNb = Notebook(self.master, ["Load Data", "Clean Data", "Plot Data"])
         mainNb.pack()
         
-        f1 = ttk.Frame(self.master)
-        mainNb.add(f1, text="Load Data")
-        LoadDataModule(f1) 
+      #  f1 = ttk.Frame(self.master)
+       # mainNb.add(f1, text="Load Data")
+        LoadDataModule(mainNb.tab("Load Data"))
         
         # f2 = ttk.Frame(self.master)
         # mainNb.add(f2, text = "Load Parameters")
         # ParametersModule(f2)
+
+      # # f3 = ttk.Frame(self.master)
+       # mainNb.add(f3, text="Clean Data")
+        CleanDataModule(mainNb.tab("Clean Data"))
+       # mainNb.add(f3, text="Clean Data")
+       # CleanDataModule(f3)
         
-        f3 = ttk.Frame(self.master)
-        mainNb.add(f3, text="Clean Data")
-       # cleanDataCanvas = tk.Canvas(f3)
-       # cleanDataScroll = tk.Scrollbar(f3, command=cleanDataCanvas.yview)
-       # cleanDataCanvas.config(yscrollcommand=cleanDataScroll.set, scrollregion=(0,0,100,1000))
-       # cleanDataCanvas.pack(fill=tk.BOTH, expand=True)
-       # cleanDataScroll.pack(side=tk.RIGHT, fill=tk.Y)
-       # f3inCanvas = ttk.Frame(cleanDataCanvas)
-       # cleanDataCanvas.create_window(1000,1000, window=f3inCanvas) adds a blank frame on top of the actual frame
-        CleanDataModule(f3)
-        
-        f4 = ttk.Frame(self.master)
-        mainNb.add(f4, text="Plot Data")
-        PlotDataModule(f4)
-        
+       # f4 = ttk.Frame(self.master)
+       # mainNb.add(f4, text="Plot Data")
+        PlotDataModule(mainNb.tab("Plot Data"))
 
 class MainWindow:
     def __init__(self, master):
@@ -983,7 +1009,9 @@ class MainWindow:
         self.close_button = tk.Button(master, text="Close", command=master.quit)
         self.close_button.pack()
         NotebookWindow(self.master)
-        
+
+
+
 root = tk.Tk()
 my_gui = MainWindow(root)
 root.update_idletasks()

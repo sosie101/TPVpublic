@@ -170,7 +170,7 @@ class Plots:
             # ax1.set(ylim=(self.YaxRangeMin,self.YaxRangeMax))
             plt.ylim(self.YaxRangeMin, self.YaxRangeMax)
             # print('resizing axis')
-        # self.fig.tight_layout(pad=0.5)
+        plt.tight_layout()
         plt.savefig(self.folderSave + self.strSave)
         # plt.close()
         plotImage = PIL.Image.open(self.folderSave+self.strSave)
@@ -195,11 +195,9 @@ class Plots:
             ########3
             titleSave = self.yGroup + " as a function of " + self.x1Group  ### saving the plot
             ax1.set_title(titleSave)
-            # self.figure.tight_layout()
-            
         ##### if there are two X groups then the "hue" is added to the striplot. the "palette" variable controls the color scheme for X2Group
         elif self.x1Group and self.x2Group:
-            plt.figure()
+            figure = plt.figure()
             ax1 = sns.stripplot(x=self.x1Group, y=self.yGroup,
                             hue=self.x2Group,
                             palette="bright",
@@ -214,12 +212,12 @@ class Plots:
             sns.set(rc={'figure.figsize':(self.sizeX,self.sizeY)}) ######
             plt.subplots_adjust(bottom=0.2)
             plt.subplots_adjust(right=0.8)
-            # plt.tight_layout()
             # ########3
             titleSave = self.yGroup + " as a function of " + self.x1Group + " and " + self.x2Group
             ax1.set_title(titleSave)
         # self.figure.tight_layout(pad = 0.5)
-        plt.savefig(self.folderSave + self.strSave)
+        plt.tight_layout()
+        plt.savefig(self.folderSave + self.strSave)  # change to seaborn
         # plt.close()
         plotImage = PIL.Image.open(self.folderSave+self.strSave)
         return plotImage
@@ -233,16 +231,15 @@ class Plots:
             sns.pairplot(self.df, vars = ['PCE', 'Voc', 'Jsc','FF'], hue = self.x1Group)
             self.strSave = 'pairPlot' + self.titleGroup + '.png'
             plt.savefig(self.folderSave+self.strSave)
-            plt.close()
-            
+           # plt.close()
         elif not self.x1Group:
             plt.figure()
             sns.pairplot(self.df, vars = ['PCE', 'Voc', 'Jsc','FF'])
             self.strSave = 'pairPlot_allDevices.png'
             plt.savefig(self.folderSave + self.strSave)
-            plt.close()
+          #  plt.close()
             plt.plot_kws={"s": 0.1}#### adjusting the size of data points
-        
+        plt.tight_layout()
         plotImage = PIL.Image.open(self.folderSave+self.strSave)
         return plotImage
     
