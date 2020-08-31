@@ -184,7 +184,7 @@ class DataMethods:
         curves that aren't continuous.
         Then, statistically deletes outliers from __dfAdjusted
         """
-        # DataMethods.__dfAdjusted.loc[0, "PCE"] = 20
+        # DataMethods.__dfAdjusted.loc[0, "FF"] = 120
         originalLen = len(DataMethods.__dfAdjusted)
         for row in DataMethods.__dfAdjusted.itertuples():
             Voc = DataMethods.__dfAdjusted.at[row.Index, 'Voc']
@@ -193,12 +193,10 @@ class DataMethods:
                 negVocMessage = "Deleted file named " + DataMethods.__dfAdjusted.at[row.Index, "File"] + " because the Voc is negative"
                 CleanDataModule.cleanLogFill(self, negVocMessage)
                 DataMethods.__dfAdjusted.drop(row.Index, inplace=True)
-                # delete from datatree
             elif FF < 25 or FF > 100:
                 oddFFMessage = "Deleted file named " + DataMethods.__dfAdjusted.at[row.Index, "File"] + " because the FF is either too low or too high"
                 CleanDataModule.cleanLogFill(self, oddFFMessage)
                 DataMethods.__dfAdjusted.drop(row.Index, inplace=True)
-                # delete from datatree
         startRow = 0
         endRow = DataMethods.findEndRow(self)
         startColumn = 1 #the Current column
@@ -212,7 +210,6 @@ class DataMethods:
                 JVOutlierMessage = "Deleted file named " + subset.at[startRow, 'File'] + " because it's JV curve isn't continuous"
                 CleanDataModule.cleanLogFill(self, JVOutlierMessage)
                 DataMethods.__dfAdjusted.drop(indices, inplace=True)
-                #delete from dataTree
             startRow += increment+1
             endRow += increment+1
         JscList = DataMethods.__dfAdjusted.loc[:, "Jsc"]
@@ -228,7 +225,7 @@ class DataMethods:
         PCEList = PCEList.values.tolist()
         DataMethods.detectOutliers(self, PCEList, "PCE")
         if len(DataMethods.__dfAdjusted) == originalLen:
-            printToActivityLog = "No files contain outliers"
+            printToActivityLog = "No files contain outliers or faulty JV Scans"
             CleanDataModule.cleanLogFill(self, printToActivityLog)
     def findEndRow(self):
         '''
@@ -587,12 +584,8 @@ class CleanDataModule:
         self.ax = self.jvPlot.add_subplot()
         xScrollbar = tk.Scrollbar(viewJVScanFrame, orient=tk.HORIZONTAL)
         xScrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-       # yScrollbar = tk.Scrollbar(viewJVScanFrame, orient=tk.VERTICAL)
-       # yScrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
         self.jvFigureCanvas = FigureCanvasTkAgg(self.jvPlot, viewJVScanFrame)
         xScrollbar.config(command=self.jvFigureCanvas.get_tk_widget().xview)
-       # yScrollbar.config(command=self.jvFigureCanvas.get_tk_widget().yview)
         self.jvFigureCanvas.get_tk_widget().config(xscrollcommand=xScrollbar.set, scrollregion=(0,0,500,500))
         toolbar = NavigationToolbar2Tk(self.jvFigureCanvas, viewJVScanFrame)
         toolbar.update()
@@ -948,7 +941,7 @@ class YScrolledFrame(tk.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        self.canvas = canvas = tk.Canvas(self, width=1000, height=500, relief='raised')
+        self.canvas = canvas = tk.Canvas(self, width=1000, height=800, relief='raised')
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         scroll = tk.Scrollbar(self, command=canvas.yview, orient=tk.VERTICAL)
